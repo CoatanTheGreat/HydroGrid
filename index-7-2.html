@@ -1,0 +1,2091 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>HydroGrid Isometric</title>
+<style>
+  :root{
+    --bg-deep:#0c1e24;
+    --bg-panel:#123039;
+    --bg-panel-2:#164351;
+    --line: rgba(159, 214, 221, 0.18);
+    --cyan:#4fd1e8;
+    --cyan-dim:#2a8fa3;
+    --amber:#f4b942;
+    --green:#6fcf7e;
+    --red:#e8654f;
+    --ink:#eaf6f6;
+    --ink-dim:#8fb7bc;
+    --mono: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
+    --sans: -apple-system, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;}
+  html,body{
+    margin:0; padding:0; width:100%; height:100%; overflow:hidden;
+    position:fixed; overscroll-behavior:none;
+    background:var(--bg-deep); color:var(--ink);
+    font-family:var(--sans);
+    touch-action:none;
+  }
+  #gameCanvas{position:fixed; top:0; left:0; width:100%; height:100%; touch-action:none; display:block;}
+
+  /* ---------- TOPBAR ---------- */
+  #topbar{
+    position:fixed; top:0; left:0; right:0;
+    height:calc(58px + env(safe-area-inset-top));
+    padding-top:env(safe-area-inset-top);
+    display:flex; align-items:center; gap:6px;
+    padding-left:8px; padding-right:8px;
+    background:linear-gradient(180deg, rgba(12,30,36,0.96), rgba(12,30,36,0.75));
+    border-bottom:1px solid var(--line);
+    z-index:20;
+  }
+  #topbar.hidden{display:none;}
+  .iconBtn{
+    width:42px; height:42px; min-width:42px; border-radius:10px;
+    background:var(--bg-panel-2); border:1px solid var(--line); color:var(--ink);
+    font-size:19px; display:flex; align-items:center; justify-content:center;
+  }
+  .iconBtn:active{background:var(--cyan-dim);}
+  #levelNameWrap{display:flex; flex-direction:column; line-height:1.05; margin-right:auto; overflow:hidden;}
+  #levelEyebrow{font-family:var(--mono); font-size:9px; letter-spacing:0.12em; color:var(--ink-dim); text-transform:uppercase;}
+  #levelName{font-size:14px; font-weight:700; white-space:nowrap;}
+  .pill{
+    display:flex; align-items:center; gap:5px; background:var(--bg-panel-2);
+    border:1px solid var(--line); border-radius:20px; padding:5px 9px;
+    font-family:var(--mono); font-size:11.5px; white-space:nowrap;
+  }
+  .pill .lbl{color:var(--ink-dim); font-size:8px; letter-spacing:0.08em; text-transform:uppercase; margin-right:2px;}
+  #starsVal{color:var(--amber); letter-spacing:1px;}
+  #pctVal{color:var(--cyan);}
+  #remainVal{color:var(--amber);}
+  /* Weer-indicator */
+  #weatherPill{gap:3px;}
+  #weatherIcon{font-size:15px;}
+  #weatherLabel{font-size:10px; color:var(--ink-dim);}
+
+  /* ---------- TOOLBAR ---------- */
+  #toolbar{
+    position:fixed; left:0; right:0; bottom:0;
+    padding-bottom:env(safe-area-inset-bottom);
+    background:linear-gradient(0deg, rgba(12,30,36,0.97), rgba(12,30,36,0.8));
+    border-top:1px solid var(--line);
+    display:flex; flex-direction:column; gap:6px; padding:8px 10px 10px 10px;
+    z-index:20;
+  }
+  #toolRow, #actionRow{display:flex; gap:6px; justify-content:center; flex-wrap:wrap;}
+  .toolBtn{
+    flex:1 1 0; max-width:100px; min-width:58px; height:56px; border-radius:12px;
+    background:var(--bg-panel); border:1px solid var(--line); color:var(--ink);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+    font-family:var(--sans); font-size:9px; letter-spacing:0.02em;
+  }
+  .toolBtn .ic{font-size:18px;}
+  .toolBtn.active{background:var(--cyan-dim); border-color:var(--cyan); box-shadow:0 0 0 1px var(--cyan) inset;}
+  .toolBtn[data-tool="excavate"] .ic{color:#ff8a75;}
+  .toolBtn[data-tool="excavate"].active{background:#8c2f22; border-color:#ff8a75; box-shadow:0 0 0 1px #ff8a75 inset;}
+  .toolBtn[data-tool="raise"] .ic{color:#7ee08a;}
+  .toolBtn[data-tool="raise"].active{background:#25642f; border-color:#7ee08a; box-shadow:0 0 0 1px #7ee08a inset;}
+  .toolBtn[data-tool="filter"] .ic{color:#c88dff;}
+  .toolBtn[data-tool="filter"].active{background:#4a2578; border-color:#c88dff; box-shadow:0 0 0 1px #c88dff inset;}
+  .toolBtn.resetLevelBtn{border-color:rgba(244,185,66,0.4);}
+  .toolBtn.resetLevelBtn .ic{color:var(--amber);}
+  .toolBtn:active{filter:brightness(1.15);}
+  .toolBtn[disabled]{opacity:0.32; pointer-events:none;}
+  #startStopBtn{
+    flex:1 1 0; max-width:200px; min-width:130px; height:56px; border-radius:12px;
+    background:var(--green); color:#0c1e24; font-weight:800; font-size:13px; border:none;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  #startStopBtn.running{background:var(--red); color:#fff;}
+  .speedBtn{
+    width:42px; height:56px; border-radius:12px; background:var(--bg-panel);
+    border:1px solid var(--line); color:var(--ink); font-family:var(--mono); font-weight:700; font-size:13px;
+  }
+  .speedBtn.active{background:var(--amber); color:#1a1006; border-color:var(--amber);}
+
+  /* ---------- OVERLAYS ---------- */
+  .overlay{
+    position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center;
+    background:
+      radial-gradient(circle at 20% 15%, rgba(79,209,232,0.08), transparent 45%),
+      radial-gradient(circle at 85% 80%, rgba(244,185,66,0.06), transparent 45%),
+      var(--bg-deep);
+    flex-direction:column;
+  }
+  .overlay.hidden{display:none;}
+  .blueprint{
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size:34px 34px;
+    position:absolute; inset:0; opacity:0.35; pointer-events:none;
+  }
+  #selTitleWrap{position:relative; text-align:center; margin-bottom:16px; padding-top:env(safe-area-inset-top);}
+  #selEyebrow{font-family:var(--mono); font-size:11px; letter-spacing:0.25em; color:var(--cyan); text-transform:uppercase;}
+  #selTitle{font-size:28px; font-weight:800; margin:2px 0 0 0; letter-spacing:-0.01em;}
+  /* Munt-display op selectiescherm */
+  #coinDisplay{
+    position:relative; display:flex; align-items:center; justify-content:center; gap:6px;
+    font-family:var(--mono); font-size:14px; color:var(--amber); margin-bottom:12px;
+  }
+  #coinDisplay .coinIcon{font-size:20px;}
+  #levelCards{position:relative; display:flex; gap:14px; flex-wrap:wrap; justify-content:center; max-width:820px; padding:0 16px;}
+  .levelCard{
+    width:180px; height:135px; border-radius:16px; background:var(--bg-panel);
+    border:1px solid var(--line); display:flex; flex-direction:column; justify-content:space-between;
+    padding:14px; position:relative; overflow:hidden;
+  }
+  .levelCard::before{
+    content:""; position:absolute; top:-30px; right:-30px; width:90px; height:90px; border-radius:50%;
+    background:radial-gradient(circle, rgba(79,209,232,0.18), transparent 70%);
+  }
+  .levelCard.locked{opacity:0.4; filter:grayscale(0.6);}
+  .lvlNum{font-family:var(--mono); font-size:10px; color:var(--cyan); letter-spacing:0.1em;}
+  .lvlName{font-size:17px; font-weight:800; margin-top:2px;}
+  .lvlStars{font-size:18px; color:var(--amber); letter-spacing:3px;}
+  #selectBtnRow{position:relative; display:flex; gap:12px; margin-top:16px;}
+  #shopBtn{
+    padding:10px 22px; border-radius:12px; background:var(--bg-panel);
+    border:1px solid rgba(244,185,66,0.5); color:var(--amber); font-weight:700; font-size:13px;
+    font-family:var(--sans); display:flex; align-items:center; gap:6px;
+  }
+  #shopBtn:active{background:var(--bg-panel-2);}
+  #footerHint{margin-top:14px; color:var(--ink-dim); font-size:11px; font-family:var(--mono);}
+
+  #resultModal .card{
+    background:var(--bg-panel); border:1px solid var(--line); border-radius:20px;
+    padding:28px 30px; width:min(88vw,340px); text-align:center;
+  }
+  #resultModal .starsBig{font-size:38px; color:var(--amber); letter-spacing:6px; margin:10px 0 14px 0;}
+  #resultModal h2{margin:0; font-size:21px;}
+  .statRow{display:flex; justify-content:space-between; font-family:var(--mono); font-size:12px; padding:6px 0; border-top:1px solid var(--line); color:var(--ink-dim);}
+  .statRow b{color:var(--ink); font-weight:700;}
+  .modalBtns{display:flex; flex-direction:column; gap:8px; margin-top:16px;}
+  .modalBtn{
+    height:46px; border-radius:12px; border:1px solid var(--line); background:var(--bg-panel-2);
+    color:var(--ink); font-weight:700; font-size:13px;
+  }
+  .modalBtn.primary{background:var(--cyan); color:#0c1e24; border:none;}
+
+  /* ---------- WINKEL OVERLAY ---------- */
+  #shopOverlay{flex-direction:column; gap:16px; padding:20px;}
+  #shopOverlay h2{font-size:24px; font-weight:800; margin:0; position:relative;}
+  #shopCoins{font-family:var(--mono); font-size:14px; color:var(--amber); position:relative;}
+  #paletteCards{position:relative; display:flex; gap:14px; flex-wrap:wrap; justify-content:center; max-width:600px;}
+  .paletteCard{
+    width:160px; border-radius:14px; background:var(--bg-panel); border:1px solid var(--line);
+    padding:14px; text-align:center; position:relative;
+  }
+  .paletteCard.owned{border-color:var(--green);}
+  .paletteCard.activeP{border-color:var(--cyan); box-shadow:0 0 0 2px var(--cyan);}
+  .paletteName{font-weight:700; font-size:14px; margin-bottom:6px;}
+  .palettePreview{display:flex; gap:4px; justify-content:center; margin-bottom:8px;}
+  .palettePreview span{width:22px; height:22px; border-radius:6px; display:inline-block;}
+  .paletteCost{font-family:var(--mono); font-size:11px; color:var(--amber);}
+  .paletteBtn{
+    margin-top:8px; width:100%; height:34px; border-radius:8px; border:1px solid var(--line);
+    background:var(--bg-panel-2); color:var(--ink); font-weight:700; font-size:11px;
+  }
+  .paletteBtn.buyBtn{border-color:var(--amber); color:var(--amber);}
+  .paletteBtn.equipBtn{border-color:var(--cyan); color:var(--cyan);}
+  .paletteBtn.equippedBtn{border-color:var(--green); color:var(--green); opacity:0.7;}
+  .paletteBtn[disabled]{opacity:0.3; pointer-events:none;}
+  #shopBackBtn{
+    position:relative; padding:10px 28px; border-radius:12px; background:var(--bg-panel-2);
+    border:1px solid var(--line); color:var(--ink); font-weight:700; font-size:13px;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="topbar" class="hidden">
+  <button class="iconBtn" id="homeBtn">&#8962;</button>
+  <div id="levelNameWrap">
+    <div id="levelEyebrow">HYDROGRID</div>
+    <div id="levelName">Level 1</div>
+  </div>
+  <div class="pill" id="weatherPill"><span id="weatherIcon">&#9788;</span><span id="weatherLabel">Helder</span></div>
+  <div class="pill"><span class="lbl">Budget</span><span id="budgetVal">&euro;0</span></div>
+  <div class="pill"><span class="lbl">Opv.</span><span id="pctVal">0%</span></div>
+  <div class="pill"><span class="lbl">Nog</span><span id="remainVal">100%</span></div>
+  <div class="pill"><span id="starsVal">&#9734;&#9734;&#9734;</span></div>
+  <button class="iconBtn" id="restartBtn">&#8635;</button>
+</div>
+
+<div id="toolbar" style="display:none;">
+  <div id="toolRow">
+    <button class="toolBtn" data-tool="excavate"><span class="ic">&#9935;</span>Afgraven</button>
+    <button class="toolBtn" data-tool="raise"><span class="ic">&#9650;</span>Ophogen</button>
+    <button class="toolBtn" data-tool="dam"><span class="ic">&#9634;</span>Dam</button>
+    <button class="toolBtn" data-tool="pipe"><span class="ic">&#8767;</span>Pijp</button>
+    <button class="toolBtn" data-tool="filter"><span class="ic">&#9878;</span>Filter</button>
+    <button class="toolBtn resetLevelBtn" id="resetLevelBtn"><span class="ic">&#8635;</span>Reset</button>
+  </div>
+  <div id="actionRow">
+    <button id="startStopBtn">&#9654; START SIMULATIE</button>
+    <button class="speedBtn active" data-speed="1">1x</button>
+    <button class="speedBtn" data-speed="2">2x</button>
+    <button class="speedBtn" data-speed="4">4x</button>
+  </div>
+</div>
+
+<div id="levelSelect" class="overlay">
+  <div class="blueprint"></div>
+  <div id="selTitleWrap">
+    <div id="selEyebrow">Waterbeheer Simulatie</div>
+    <h1 id="selTitle">HydroGrid Isometric</h1>
+  </div>
+  <div id="coinDisplay"><span class="coinIcon">&#x1FA99;</span> <span id="coinVal">0</span> Gouden Munten</div>
+  <div id="levelCards"></div>
+  <div id="selectBtnRow">
+    <button id="shopBtn">&#x1FA99; Winkel</button>
+  </div>
+  <div id="footerHint">Tik een ontgrendeld level om te beginnen</div>
+</div>
+
+<div id="resultModal" class="overlay hidden">
+  <div class="card">
+    <h2 id="resultTitle">Level voltooid</h2>
+    <div class="starsBig" id="resultStars">&#9733;&#9733;&#9733;</div>
+    <div class="statRow"><span>Opgevangen water</span><b id="resultPct">0%</b></div>
+    <div class="statRow"><span>Budget over</span><b id="resultBudget">0%</b></div>
+    <div class="statRow" id="coinsEarnedRow"><span>Munten verdiend</span><b id="resultCoins">+0</b></div>
+    <div class="modalBtns">
+      <button class="modalBtn primary" id="nextLevelBtn">Volgend level &#8594;</button>
+      <button class="modalBtn" id="retryBtn">Opnieuw proberen</button>
+      <button class="modalBtn" id="toSelectBtn">Level selectie</button>
+    </div>
+  </div>
+</div>
+
+<!-- Winkel overlay -->
+<div id="shopOverlay" class="overlay hidden">
+  <div class="blueprint"></div>
+  <h2>&#x1FA99; Winkel</h2>
+  <div id="shopCoins">0 Munten</div>
+  <div id="paletteCards"></div>
+  <button id="shopBackBtn">&#8592; Terug</button>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* =====================================================================
+   CONSTANTEN
+===================================================================== */
+const TILE_W = 64, TILE_H = 32, HEIGHT_UNIT = 16;
+const MIN_HEIGHT = 0, MAX_HEIGHT = 4;
+const COST = { excavate: 8, raise: 8, dam: 20, filter: 35 };
+const PIPE_BASE_COST = 10, PIPE_COST_PER_TILE = 14;
+const MILL_RATE = 2;
+const EMIT_RATE = 1.6;
+const FLOW_COEF = 1.4;
+const VOID_FLOW_COEF = FLOW_COEF*0.75; // rand-lekkage sneller: nu bron/bassin altijd een bufferring van de echte rand hebben, mag dit omhoog
+const BASIN_DRAIN_COEF = FLOW_COEF*2.2; // het bassin (de "afvoer") trekt water veel sneller naar binnen, zodat het niet vóór de opening blijft opstuwen/overstromen
+const PHYSICS_DT = 1/60;
+const SETTLE_EPS = 0.03;
+const SETTLE_FRAMES_NEEDED = 90;
+const MAX_SUBSTEPS_TOTAL = 60*45;
+
+/* Weer-constanten */
+const WEATHER_MIN_DUR = 8;   // minimale duur per weertype (seconden simtijd)
+const WEATHER_MAX_DUR = 18;
+const RAIN_RATE = 0.006;     // water per regendruppel per physics-stap
+const RAIN_CHANCE = 0.18;    // kans dat een zandtegel per stap regen krijgt
+const DROUGHT_EVAP = 0.9985; // vermenigvuldigingsfactor per stap (1 = geen verdamping)
+
+/* Vervuiling-penalty: elke eenheid vervuild water in het bassin telt als negatief */
+const POLL_PENALTY = 1.0;
+
+function manhattanDist(a,b){ return Math.abs(a.r-b.r)+Math.abs(a.c-b.c); }
+function pipeCostFor(a,b){ return Math.round(PIPE_BASE_COST + PIPE_COST_PER_TILE*manhattanDist(a,b)); }
+
+/* =====================================================================
+   KLEURENPALETTEN (cosmetische unlock)
+===================================================================== */
+const PALETTES = {
+  default: {
+    name:'Standaard', cost:0,
+    bgDeep:'#0c1e24', bgPanel:'#123039', bgPanel2:'#164351',
+    cyan:'#4fd1e8', cyanDim:'#2a8fa3', amber:'#f4b942',
+    sandHue:40, waterRGB:[92,192,240], pollRGB:[160,60,220],
+    gridLine:'rgba(120,190,200,0.045)'
+  },
+  desert: {
+    name:'Woestijn Oase', cost:50,
+    bgDeep:'#241a0c', bgPanel:'#3a2a14', bgPanel2:'#4d3820',
+    cyan:'#e8a54f', cyanDim:'#a37030', amber:'#f4d442',
+    sandHue:28, waterRGB:[60,185,140], pollRGB:[180,50,80],
+    gridLine:'rgba(200,160,80,0.05)'
+  },
+  neon: {
+    name:'Neon Cyberpunk', cost:80,
+    bgDeep:'#08001a', bgPanel:'#140030', bgPanel2:'#200048',
+    cyan:'#ff44ff', cyanDim:'#8a2090', amber:'#44ffcc',
+    sandHue:270, waterRGB:[100,60,255], pollRGB:[255,40,80],
+    gridLine:'rgba(180,60,255,0.06)'
+  }
+};
+
+/* =====================================================================
+   LEVEL DATA
+===================================================================== */
+function slopeGrid(rows, cols, fn){
+  const g=[];
+  for(let r=0;r<rows;r++){ const row=[]; for(let c=0;c<cols;c++){ row.push(fn(r,c)); } g.push(row); }
+  return g;
+}
+
+const RAW_LEVELS = [
+  {
+    id:1, name:"De Beek", rows:6, cols:6, budget:150, bronsPct:26, silverPct:42,
+    heights:[
+      [3,3,2,2,1,1],
+      [3,2,2,1,1,1],
+      [2,2,1,1,1,0],
+      [2,1,1,1,0,0],
+      [1,1,1,0,0,0],
+      [1,1,0,0,0,0]
+    ],
+    rocks:[],
+    sources:[{r:0,c:0,volumeLimit:45}],
+    pollutedSources:[],
+    basins:[{r:5,c:5}],
+    mill:{r:2,c:2}
+  },
+  {
+    id:2, name:"De Rotswand", rows:7, cols:7, budget:180, bronsPct:20, silverPct:36,
+    heights: slopeGrid(7,7,(r,c)=> Math.max(0, 4 - Math.floor((r+c)/2))),
+    rocks:[{r:2,c:3},{r:3,c:2},{r:3,c:3},{r:3,c:4},{r:4,c:3}],
+    sources:[{r:0,c:0,volumeLimit:50}],
+    pollutedSources:[],
+    basins:[{r:6,c:6}],
+    mill:{r:5,c:5}
+  },
+  {
+    id:3, name:"De Tweeling Delta", rows:8, cols:8, budget:220, bronsPct:36, silverPct:55,
+    heights: (function(){ const rh=[4,4,3,3,2,2,1,0]; return rh.map(v=>new Array(8).fill(v)); })(),
+    rocks:[{r:3,c:3},{r:3,c:4},{r:4,c:3},{r:4,c:4}],
+    sources:[{r:0,c:0,volumeLimit:38},{r:0,c:7,volumeLimit:38}],
+    pollutedSources:[],
+    basins:[{r:7,c:0},{r:7,c:7}],
+    mill:{r:6,c:4}
+  },
+  /* ---- NIEUW: level 4 met vervuilde bron ---- */
+  {
+    id:4, name:"Giftige Stroom", rows:8, cols:8, budget:280, bronsPct:30, silverPct:50,
+    heights: slopeGrid(8,8,(r,c)=>{
+      const center = Math.abs(r-3.5)+Math.abs(c-3.5);
+      return Math.min(4, Math.max(0, Math.round(4-center*0.7)));
+    }),
+    rocks:[{r:2,c:2},{r:5,c:5}],
+    sources:[{r:0,c:3,volumeLimit:42}],
+    pollutedSources:[{r:0,c:6,volumeLimit:28}], // paarse bron rechtsboven
+    basins:[{r:7,c:1},{r:7,c:6}],
+    mill:{r:4,c:4}
+  },
+  /* ---- NIEUW: level 5 met meerdere vervuilde bronnen ---- */
+  {
+    id:5, name:"Zuiver of Sterf", rows:9, cols:9, budget:360, bronsPct:28, silverPct:46,
+    heights: slopeGrid(9,9,(r,c)=>{
+      const ridge = Math.abs(c-4) <= 1 ? 3 : 0;
+      return Math.min(4, Math.max(0, Math.round(4-r*0.5) + ridge));
+    }),
+    rocks:[{r:1,c:4},{r:4,c:2},{r:4,c:6}],
+    sources:[{r:0,c:0,volumeLimit:50}],
+    pollutedSources:[{r:0,c:4,volumeLimit:30},{r:0,c:8,volumeLimit:25}],
+    basins:[{r:8,c:0},{r:8,c:4},{r:8,c:8}],
+    mill:{r:6,c:4}
+  }
+];
+
+/* Voegt aan een hoogtekaart een bufferring van 1 tegel toe rondom, door de
+   buitenste rij/kolom te herhalen (clamping). Zo blijft de helling exact
+   hetzelfde, maar krijgt elk level een extra rand tussen het echte
+   raster-einde en de speelbare inhoud. */
+function padHeights(h){
+  const rows = h.length, cols = h[0].length;
+  const out = [];
+  for(let r=-1; r<=rows; r++){
+    const row = [];
+    for(let c=-1; c<=cols; c++){
+      const rr = Math.min(rows-1, Math.max(0, r));
+      const cc = Math.min(cols-1, Math.max(0, c));
+      row.push(h[rr][cc]);
+    }
+    out.push(row);
+  }
+  return out;
+}
+function shiftPt(p){ return Object.assign({}, p, { r:p.r+1, c:p.c+1 }); }
+
+/* Bron én bassin mogen nooit op de echte rand van het raster liggen: als een
+   bron/bassin daar zit heeft die tegel maar 2 (i.p.v. 4) buurtegels, en gaat
+   water er via de niet-bestaande buren rechtstreeks "achter" de tegel weg
+   (void-lek), waardoor je het nooit meer kunt bijsturen. Door elk level bij
+   het laden automatisch 1 tegel buffer te geven — en alle posities een
+   stap te verschuiven — staat elke bron en elk bassin gegarandeerd
+   minstens 1 tegel van de rand af, zonder dat de originele level-ontwerpen
+   hierboven hoeven te veranderen. */
+function padLevel(def){
+  return Object.assign({}, def, {
+    rows: def.rows+2, cols: def.cols+2,
+    heights: padHeights(def.heights),
+    rocks: (def.rocks||[]).map(shiftPt),
+    sources: (def.sources||[]).map(shiftPt),
+    pollutedSources: (def.pollutedSources||[]).map(shiftPt),
+    basins: (def.basins||[]).map(shiftPt),
+    mill: def.mill ? shiftPt(def.mill) : null
+  });
+}
+const LEVELS = RAW_LEVELS.map(padLevel);
+
+/* =====================================================================
+   STATE
+===================================================================== */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let currentScreen = 'select';
+let currentLevel = null;
+let grid = [];
+let renderOrder = [];
+let ghostArrows = [];
+
+let session = { spent:0 };
+let sim = { running:false, totalEmitted:0, totalCaptured:0, totalLost:0,
+            totalPollCaptured:0, substeps:0, stableFrames:0 };
+
+let currentTool = 'excavate';
+let speedMultiplier = 1;
+let pendingPipe = null;
+
+let particles = [];
+let costPopups = [];
+let moneyParticles = [];
+let leakIntensity = new Map();
+let millZone = null;
+let millEarnBuffer = 0;
+let millAngle = 0;
+
+/* Weer-state */
+let weather = { type:'clear', timer:0, forecast:'clear' };
+
+/* Screen-shake state */
+let shakeAmt = 0;
+
+/* Actief kleurenpalet */
+let activePalette = 'default';
+
+let originX=0, originY=0, gridScale=1;
+let isPointerDown=false, paintedThisStroke=null, lastTouchedTile=null;
+
+let saveData = loadSave();
+activePalette = saveData.activePalette || 'default';
+applyPalette(activePalette);
+
+/* =====================================================================
+   OPSLAG (localStorage)
+===================================================================== */
+const SAVE_KEY = 'hydrogrid_save_v2';
+function defaultSave(){
+  const levels = {};
+  LEVELS.forEach((l,i)=>{ levels[l.id] = { unlocked: i===0, stars:0 }; });
+  return { levels, coins:0, ownedPalettes:['default'], activePalette:'default' };
+}
+function loadSave(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(raw){
+      const p = JSON.parse(raw);
+      if(p && p.levels){
+        // Migratie: voeg nieuwe velden toe als ze ontbreken
+        if(p.coins == null) p.coins = 0;
+        if(!p.ownedPalettes) p.ownedPalettes = ['default'];
+        if(!p.activePalette) p.activePalette = 'default';
+        // Voeg nieuwe levels toe als ze er nog niet in staan
+        LEVELS.forEach((l,i)=>{
+          if(!p.levels[l.id]) p.levels[l.id] = { unlocked: i===0, stars:0 };
+        });
+        return p;
+      }
+    }
+  }catch(e){}
+  return defaultSave();
+}
+function persistSave(){
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify(saveData)); }catch(e){}
+}
+function saveProgress(levelId, stars, coinsEarned){
+  const key = String(levelId);
+  if(!saveData.levels[key]) saveData.levels[key] = { unlocked:true, stars:0 };
+  if(stars > saveData.levels[key].stars) saveData.levels[key].stars = stars;
+  saveData.levels[key].unlocked = true;
+  // Munten alleen toekennen bij succesvolle afronding
+  if(coinsEarned > 0) saveData.coins = (saveData.coins||0) + coinsEarned;
+  if(stars >= 1){
+    const nextDef = LEVELS.find(l=>l.id === levelId+1);
+    if(nextDef){
+      const nk = String(nextDef.id);
+      if(!saveData.levels[nk]) saveData.levels[nk] = { unlocked:false, stars:0 };
+      saveData.levels[nk].unlocked = true;
+    }
+  }
+  persistSave();
+}
+
+/* =====================================================================
+   PALETTEN — CSS-variabelen + tekenlogica bijwerken
+===================================================================== */
+function applyPalette(id){
+  const p = PALETTES[id] || PALETTES.default;
+  activePalette = id;
+  const r = document.documentElement.style;
+  r.setProperty('--bg-deep', p.bgDeep);
+  r.setProperty('--bg-panel', p.bgPanel);
+  r.setProperty('--bg-panel-2', p.bgPanel2);
+  r.setProperty('--cyan', p.cyan);
+  r.setProperty('--cyan-dim', p.cyanDim);
+  r.setProperty('--amber', p.amber);
+  saveData.activePalette = id;
+  persistSave();
+}
+
+/* =====================================================================
+   AUDIO (Web Audio API — programmatisch)
+===================================================================== */
+let audioCtx = null;
+let noiseSource=null, noiseFilter=null, noiseGain=null;
+
+function ensureAudio(){
+  if(!audioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(AC) audioCtx = new AC();
+  }
+  if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playClick(){
+  if(!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(880, t);
+  o.frequency.exponentialRampToValueAtTime(420, t+0.09);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.28, t+0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t+0.16);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(t); o.stop(t+0.17);
+}
+
+function playDenied(){
+  if(!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = 'square';
+  o.frequency.setValueAtTime(130, t);
+  g.gain.setValueAtTime(0.14, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t+0.22);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(t); o.stop(t+0.23);
+}
+
+function createNoiseBuffer(){
+  const len = audioCtx.sampleRate * 2;
+  const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+  const data = buf.getChannelData(0);
+  for(let i=0;i<len;i++) data[i] = Math.random()*2-1;
+  return buf;
+}
+function startWaterSound(){
+  if(!audioCtx || noiseSource) return;
+  noiseSource = audioCtx.createBufferSource();
+  noiseSource.buffer = createNoiseBuffer();
+  noiseSource.loop = true;
+  noiseFilter = audioCtx.createBiquadFilter();
+  noiseFilter.type = 'bandpass';
+  noiseFilter.frequency.value = 500;
+  noiseFilter.Q.value = 0.6;
+  noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 0.0001;
+  noiseSource.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(audioCtx.destination);
+  noiseSource.start();
+}
+function updateWaterSound(intensity){
+  if(!noiseGain || !audioCtx) return;
+  const target = 0.04 + Math.min(1,intensity)*0.16;
+  noiseGain.gain.setTargetAtTime(target, audioCtx.currentTime, 0.12);
+  noiseFilter.frequency.setTargetAtTime(380 + Math.min(1,intensity)*950, audioCtx.currentTime, 0.18);
+}
+function stopWaterSound(){
+  if(noiseSource){
+    try{ noiseSource.stop(); }catch(e){}
+    noiseSource=null; noiseFilter=null; noiseGain=null;
+  }
+}
+
+function playFanfare(){
+  if(!audioCtx) return;
+  const notes = [523.25, 659.25, 783.99, 1046.5];
+  notes.forEach((f,i)=>{
+    const t = audioCtx.currentTime + i*0.14;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'triangle'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.3, t+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+0.32);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t); o.stop(t+0.34);
+  });
+}
+function playFailSound(){
+  if(!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(300, t);
+  o.frequency.exponentialRampToValueAtTime(110, t+0.5);
+  g.gain.setValueAtTime(0.18, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t+0.5);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(t); o.stop(t+0.52);
+}
+
+/* =====================================================================
+   GRID / TILE HELPERS
+===================================================================== */
+function getTile(r,c){
+  if(!currentLevel) return null;
+  if(r<0||c<0||r>=currentLevel.rows||c>=currentLevel.cols) return null;
+  return grid[r][c];
+}
+
+function buildGridFromDef(def){
+  grid = [];
+  for(let r=0;r<def.rows;r++){
+    const row=[];
+    for(let c=0;c<def.cols;c++){
+      const isRock = def.rocks.some(p=>p.r===r && p.c===c);
+      const tile = {
+        r,c, type: isRock?'rock':'sand', height: def.heights[r][c],
+        water:0, polluted:0,        // polluted = hoeveelheid vervuild water
+        isSource:false, isBasin:false, isDam:false, isFilter:false,
+        isPollSource:false,
+        deco: null                   // natuur-decoratie
+      };
+      /* Natuur-details: kiezels of gras op willekeurige zandtegels */
+      if(tile.type==='sand'){
+        const rnd = Math.random();
+        if(rnd < 0.18){
+          tile.deco = { type:'grass', blades: [] };
+          const n = 2 + Math.floor(Math.random()*3);
+          for(let i=0;i<n;i++){
+            tile.deco.blades.push({
+              ox: (Math.random()-0.5)*18,
+              oy: (Math.random()-0.5)*9,
+              h: 3+Math.random()*4,
+              lean: (Math.random()-0.5)*3
+            });
+          }
+        } else if(rnd < 0.30){
+          tile.deco = { type:'pebbles', stones: [] };
+          const n = 2 + Math.floor(Math.random()*3);
+          for(let i=0;i<n;i++){
+            tile.deco.stones.push({
+              ox: (Math.random()-0.5)*20,
+              oy: (Math.random()-0.5)*10,
+              rad: 1+Math.random()*1.8,
+              shade: 0.3+Math.random()*0.25
+            });
+          }
+        }
+      }
+      row.push(tile);
+    }
+    grid.push(row);
+  }
+  def.sources.forEach(s=>{ grid[s.r][s.c].isSource = true; s.emitted = 0; });
+  /* Vervuilde bronnen markeren */
+  (def.pollutedSources||[]).forEach(s=>{
+    grid[s.r][s.c].isSource = true;
+    grid[s.r][s.c].isPollSource = true;
+    s.emitted = 0;
+  });
+  def.basins.forEach(b=>{ grid[b.r][b.c].isBasin = true; });
+}
+
+function computeRenderOrder(){
+  renderOrder = [];
+  for(let r=0;r<currentLevel.rows;r++) for(let c=0;c<currentLevel.cols;c++) renderOrder.push({r,c});
+  renderOrder.sort((a,b)=>(a.r+a.c)-(b.r+b.c));
+}
+
+function computeGhostArrows(){
+  ghostArrows = [];
+  for(let r=0;r<currentLevel.rows;r++){
+    for(let c=0;c<currentLevel.cols;c++){
+      const t = grid[r][c];
+      if(t.isDam || t.isBasin || t.isFilter) continue;
+      const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+      let best = null;
+      dirs.forEach(([dr,dc])=>{
+        const n = getTile(r+dr,c+dc);
+        if(n && !n.isDam && n.height < t.height){
+          if(!best || n.height < best.h) best = {dr,dc,h:n.height};
+        }
+      });
+      if(best) ghostArrows.push({r,c,dr:best.dr,dc:best.dc});
+    }
+  }
+}
+
+/* =====================================================================
+   WEER-SYSTEEM
+===================================================================== */
+function initWeather(){
+  weather.type = 'clear';
+  weather.forecast = rollWeather();
+  weather.timer = WEATHER_MIN_DUR + Math.random()*(WEATHER_MAX_DUR-WEATHER_MIN_DUR);
+  updateWeatherUI();
+}
+function rollWeather(){
+  const r = Math.random();
+  if(r < 0.40) return 'clear';
+  if(r < 0.72) return 'rain';
+  return 'drought';
+}
+function stepWeather(dt){
+  weather.timer -= dt;
+  if(weather.timer <= 0){
+    weather.type = weather.forecast;
+    weather.forecast = rollWeather();
+    weather.timer = WEATHER_MIN_DUR + Math.random()*(WEATHER_MAX_DUR-WEATHER_MIN_DUR);
+    updateWeatherUI();
+  }
+}
+function updateWeatherUI(){
+  const icon = document.getElementById('weatherIcon');
+  const lbl = document.getElementById('weatherLabel');
+  if(weather.type==='rain'){      icon.textContent='🌧'; lbl.textContent='Regen'; }
+  else if(weather.type==='drought'){ icon.textContent='☀'; lbl.textContent='Droogte'; }
+  else {                          icon.textContent='⛅'; lbl.textContent='Helder'; }
+}
+function applyWeatherEffects(){
+  if(weather.type==='rain'){
+    /* Regen: vul willekeurige zandtegels langzaam met schoon water */
+    for(let r=0;r<currentLevel.rows;r++){
+      for(let c=0;c<currentLevel.cols;c++){
+        const t = grid[r][c];
+        if(t.type==='sand' && !t.isDam && !t.isBasin && !t.isSource && Math.random()<RAIN_CHANCE){
+          t.water += RAIN_RATE;
+        }
+      }
+    }
+  } else if(weather.type==='drought'){
+    /* Droogte: water verdampt langzaam */
+    for(let r=0;r<currentLevel.rows;r++){
+      for(let c=0;c<currentLevel.cols;c++){
+        const t = grid[r][c];
+        if(t.water > 0.001) t.water *= DROUGHT_EVAP;
+        if(t.polluted > 0.001) t.polluted *= DROUGHT_EVAP;
+      }
+    }
+  }
+}
+
+/* =====================================================================
+   FYSICA — waterstroom simulatie (uitgebreid met vervuiling)
+===================================================================== */
+function getFlowTargets(t){
+  const dirs=[[-1,0],[1,0],[0,-1],[0,1]];
+  const res=[];
+  const seen = new Set();
+  dirs.forEach(([dr,dc])=>{
+    const n = getTile(t.r+dr, t.c+dc);
+    if(!n){
+      if(!t.isSource) res.push({ void:true });
+    } else if(!n.isDam){
+      res.push({ tile:n }); seen.add(n.r+'_'+n.c);
+    }
+  });
+  currentLevel.pipes.forEach(p=>{
+    let other=null;
+    if(p.a.r===t.r && p.a.c===t.c) other=p.b;
+    else if(p.b.r===t.r && p.b.c===t.c) other=p.a;
+    if(other){
+      const n = getTile(other.r, other.c);
+      const key = n ? n.r+'_'+n.c : null;
+      if(n && !n.isDam && !seen.has(key)){ res.push({ tile:n }); seen.add(key); }
+    }
+  });
+  return res;
+}
+
+function basinFillRatio(){
+  const totalCap = currentLevel.sources.reduce((s,src)=>s+src.volumeLimit,0)
+                 + (currentLevel.pollutedSources||[]).reduce((s,src)=>s+src.volumeLimit,0);
+  const effective = totalCap * 0.9;
+  if(effective<=0) return 0;
+  return Math.max(0, Math.min(1, (sim.totalCaptured - sim.totalPollCaptured*POLL_PENALTY) / effective));
+}
+
+function stepPhysics(dt){
+  /* 1. Emissie schone bronnen */
+  currentLevel.sources.forEach(s=>{
+    if(s.emitted < s.volumeLimit){
+      const amt = Math.min(EMIT_RATE*dt, s.volumeLimit - s.emitted);
+      const t = getTile(s.r,s.c);
+      t.water += amt; s.emitted += amt; sim.totalEmitted += amt;
+    }
+  });
+  /* 1b. Emissie vervuilde bronnen */
+  (currentLevel.pollutedSources||[]).forEach(s=>{
+    if(s.emitted < s.volumeLimit){
+      const amt = Math.min(EMIT_RATE*dt, s.volumeLimit - s.emitted);
+      const t = getTile(s.r,s.c);
+      t.polluted += amt; s.emitted += amt; sim.totalEmitted += amt;
+    }
+  });
+
+  /* Weer-effecten toepassen */
+  if(sim.running) applyWeatherEffects();
+
+  /* 2. Stroomberekening (snapshot) */
+  const deltaW = new Map();  // schoon water delta
+  const deltaP = new Map();  // vervuild water delta
+  function addD(map,t,v){ const k=t.r+'_'+t.c; map.set(k,(map.get(k)||0)+v); }
+
+  let totalMovement = 0;
+  let millFlowThisStep = 0;
+
+  for(let r=0;r<currentLevel.rows;r++){
+    for(let c=0;c<currentLevel.cols;c++){
+      const t = grid[r][c];
+      if(t.isDam) continue;
+      const totalW = t.water + t.polluted;
+      if(totalW <= 0.0005) continue;
+      const pollFrac = totalW > 0 ? t.polluted / totalW : 0;
+      const targets = getFlowTargets(t);
+      const surfaceT = t.height + totalW;
+      const flows=[]; let totalOut=0;
+      targets.forEach(tg=>{
+        let surfaceN, terrainN, coef;
+        if(tg.void){ surfaceN = t.height; terrainN = t.height; coef = VOID_FLOW_COEF; }
+        else if(tg.tile.isBasin){ surfaceN = tg.tile.height; terrainN = tg.tile.height; coef = BASIN_DRAIN_COEF; }
+        else {
+          const tgTotal = tg.tile.water + tg.tile.polluted;
+          surfaceN = tg.tile.height + tgTotal; terrainN = tg.tile.height; coef = FLOW_COEF;
+        }
+        const diff = surfaceT - surfaceN;
+        if(diff > 0.001){
+          const terrainDrop = Math.max(0, t.height - terrainN);
+          const gravityBoost = 1 + terrainDrop*0.35;
+          const f = diff*coef*gravityBoost*dt;
+          flows.push({tg,f});
+          totalOut += f;
+        }
+      });
+      if(totalOut > totalW && totalOut > 0){
+        const scale = totalW/totalOut;
+        flows.forEach(fl=>fl.f*=scale);
+        totalOut = totalW;
+      }
+      const tKey = t.r+'_'+t.c;
+      const tInMillZone = millZone && millZone.has(tKey);
+      flows.forEach(fl=>{
+        const cleanPart = fl.f * (1-pollFrac);
+        const pollPart = fl.f * pollFrac;
+        addD(deltaW, t, -cleanPart);
+        addD(deltaP, t, -pollPart);
+        totalMovement += fl.f;
+        if(fl.tg.void){
+          sim.totalLost += fl.f;
+          leakIntensity.set(tKey, (leakIntensity.get(tKey)||0) + fl.f);
+        } else if(fl.tg.tile.isBasin){
+          sim.totalCaptured += cleanPart;
+          sim.totalPollCaptured += pollPart; // vervuild water in bassin telt als penalty
+        } else if(fl.tg.tile.isFilter){
+          /* Filter: vervuild water wordt schoon */
+          addD(deltaW, fl.tg.tile, cleanPart + pollPart);
+          // pollPart gaat NIET naar polluted van filter-tegel → conversie!
+        } else {
+          addD(deltaW, fl.tg.tile, cleanPart);
+          addD(deltaP, fl.tg.tile, pollPart);
+        }
+        if(millZone && (tInMillZone || (!fl.tg.void && millZone.has(fl.tg.tile.r+'_'+fl.tg.tile.c)))){
+          millFlowThisStep += fl.f;
+        }
+        maybeSpawnParticle(t, fl.tg, fl.f, pollFrac);
+      });
+    }
+  }
+
+  /* Deltas toepassen */
+  deltaW.forEach((v,k)=>{
+    const parts=k.split('_'); grid[Number(parts[0])][Number(parts[1])].water = Math.max(0, grid[Number(parts[0])][Number(parts[1])].water + v);
+  });
+  deltaP.forEach((v,k)=>{
+    const parts=k.split('_'); grid[Number(parts[0])][Number(parts[1])].polluted = Math.max(0, grid[Number(parts[0])][Number(parts[1])].polluted + v);
+  });
+
+  /* Filter-tegels: alle vervuiling op de tegel zelf wordt ook direct schoon */
+  for(let r=0;r<currentLevel.rows;r++){
+    for(let c=0;c<currentLevel.cols;c++){
+      const t = grid[r][c];
+      if(t.isFilter && t.polluted > 0){
+        t.water += t.polluted;
+        t.polluted = 0;
+      }
+    }
+  }
+
+  leakIntensity.forEach((v,k)=>{
+    const nv = v*0.94;
+    if(nv < 0.002) leakIntensity.delete(k); else leakIntensity.set(k, nv);
+  });
+
+  /* Molentje */
+  if(millFlowThisStep > 0){
+    const earn = Math.min(millFlowThisStep*MILL_RATE, currentLevel.budget*1.5 - (session.millEarned||0));
+    if(earn > 0){
+      session.spent = Math.max(0, session.spent - earn);
+      session.millEarned = (session.millEarned||0) + earn;
+      millEarnBuffer += earn;
+      while(millEarnBuffer >= 1.2){ spawnMoneyParticle(); millEarnBuffer -= 1.2; }
+    }
+  }
+
+  /* Weer voortgang */
+  stepWeather(dt);
+
+  sim.substeps++;
+  if(totalMovement < SETTLE_EPS) sim.stableFrames++; else sim.stableFrames = 0;
+  return totalMovement;
+}
+
+function checkSimCompletion(){
+  const allClean = currentLevel.sources.every(s=>s.emitted >= s.volumeLimit-0.0001);
+  const allPoll = (currentLevel.pollutedSources||[]).every(s=>s.emitted >= s.volumeLimit-0.0001);
+  if(allClean && allPoll && sim.stableFrames >= SETTLE_FRAMES_NEEDED) return true;
+  if(sim.substeps >= MAX_SUBSTEPS_TOTAL) return true;
+  return false;
+}
+
+/* =====================================================================
+   PARTICLES
+===================================================================== */
+function tileToScreenWorld(c,r,h){
+  return { x:(c-r)*TILE_W/2, y:(c+r)*TILE_H/2 - h*HEIGHT_UNIT };
+}
+
+function maybeSpawnParticle(fromTile, tg, flowAmt, pollFrac){
+  if(flowAmt < 0.003) return;
+  if(Math.random() > Math.min(1, flowAmt*10)) return;
+  const totalW = fromTile.water + fromTile.polluted;
+  const p1 = tileToScreenWorld(fromTile.c, fromTile.r, fromTile.height + Math.min(totalW,1)*0.5);
+  let p2;
+  if(tg.void){
+    p2 = { x:p1.x + (Math.random()-0.5)*40, y:p1.y + 42 };
+  } else {
+    const tgTotal = tg.tile.water + tg.tile.polluted;
+    p2 = tileToScreenWorld(tg.tile.c, tg.tile.r, tg.tile.height + Math.min(tgTotal,1)*0.5);
+  }
+  const pal = PALETTES[activePalette];
+  particles.push({
+    x:p1.x + (Math.random()-0.5)*8, y:p1.y + (Math.random()-0.5)*6,
+    vx:(p2.x-p1.x)*1.6, vy:(p2.y-p1.y)*1.6,
+    life:0, maxLife:0.45+Math.random()*0.25,
+    poll: pollFrac||0 // voor kleurkeuze
+  });
+  if(particles.length > 300) particles.splice(0, particles.length-300);
+}
+
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    p.life += dt; p.x += p.vx*dt; p.y += p.vy*dt;
+    if(p.life >= p.maxLife) particles.splice(i,1);
+  }
+}
+
+function spawnCostPopup(t, amount){
+  const pos = tileToScreenWorld(t.c, t.r, t.height);
+  costPopups.push({
+    x: pos.x, y: pos.y - 14,
+    text: (amount<0?'-':'+') + '\u20AC' + Math.abs(Math.round(amount)),
+    color: amount<0 ? '#ff9a86' : '#7ee08a',
+    life:0, maxLife:0.9
+  });
+}
+function updateCostPopups(dt){
+  for(let i=costPopups.length-1;i>=0;i--){
+    const p = costPopups[i];
+    p.life += dt; p.y -= dt*26;
+    if(p.life >= p.maxLife) costPopups.splice(i,1);
+  }
+}
+function drawCostPopups(){
+  ctx.save();
+  ctx.font = '700 13px ' + getComputedStyle(document.body).fontFamily;
+  ctx.textAlign = 'center';
+  costPopups.forEach(p=>{
+    const a = 1-(p.life/p.maxLife);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = p.color;
+    ctx.fillText(p.text, p.x, p.y);
+  });
+  ctx.restore();
+}
+
+function computeMillZone(){
+  millZone = null;
+  if(!currentLevel || !currentLevel.mill) return;
+  millZone = new Set();
+  const {r,c} = currentLevel.mill;
+  millZone.add(r+'_'+c);
+  [[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,dc])=>{
+    const nr=r+dr, nc=c+dc;
+    if(nr>=0 && nc>=0 && nr<currentLevel.rows && nc<currentLevel.cols) millZone.add(nr+'_'+nc);
+  });
+}
+
+function spawnMoneyParticle(){
+  if(!currentLevel || !currentLevel.mill) return;
+  const mt = getTile(currentLevel.mill.r, currentLevel.mill.c);
+  if(!mt) return;
+  const pos = tileToScreenWorld(mt.c, mt.r, mt.height);
+  moneyParticles.push({
+    x: pos.x + (Math.random()-0.5)*22, y: pos.y - 18 - Math.random()*6,
+    vy: -24 - Math.random()*10, life:0, maxLife:1.0+Math.random()*0.3
+  });
+  if(moneyParticles.length > 30) moneyParticles.splice(0, moneyParticles.length-30);
+}
+function updateMoneyParticles(dt){
+  for(let i=moneyParticles.length-1;i>=0;i--){
+    const p = moneyParticles[i];
+    p.life += dt; p.y += p.vy*dt;
+    if(p.life >= p.maxLife) moneyParticles.splice(i,1);
+  }
+}
+function drawMoneyParticles(){
+  ctx.save();
+  ctx.font = '700 15px sans-serif';
+  ctx.textAlign = 'center';
+  moneyParticles.forEach(p=>{
+    const a = 1-(p.life/p.maxLife);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = '#ffd76b';
+    ctx.strokeStyle = 'rgba(60,40,0,0.5)'; ctx.lineWidth=2;
+    ctx.strokeText('$', p.x, p.y);
+    ctx.fillText('$', p.x, p.y);
+  });
+  ctx.restore();
+}
+
+/* =====================================================================
+   SCREEN SHAKE
+===================================================================== */
+function triggerShake(intensity){
+  shakeAmt = Math.max(shakeAmt, intensity);
+}
+
+/* =====================================================================
+   TOOLS / BOUWFASE ACTIES
+===================================================================== */
+function spend(amount){
+  if(session.spent + amount > currentLevel.budget){ playDenied(); return false; }
+  session.spent += amount;
+  return true;
+}
+
+function findPipeAt(r,c){
+  return currentLevel.pipes.find(p=> (p.a.r===r&&p.a.c===c) || (p.b.r===r&&p.b.c===c) );
+}
+
+function applyTool(t, tool){
+  if(!t || sim.running) return;
+  if(tool === 'excavate'){
+    if(t.type!=='sand' || t.isSource || t.isBasin || t.isDam || t.isFilter){ playDenied(); return; }
+    if(t.height <= MIN_HEIGHT) return;
+    if(!spend(COST.excavate)) return;
+    t.height--; playClick(); spawnCostPopup(t, -COST.excavate);
+    triggerShake(4);
+  } else if(tool === 'raise'){
+    if(t.type!=='sand' || t.isSource || t.isBasin || t.isDam || t.isFilter){ playDenied(); return; }
+    if(t.height >= MAX_HEIGHT) return;
+    if(!spend(COST.raise)) return;
+    t.height++; playClick(); spawnCostPopup(t, -COST.raise);
+    triggerShake(4);
+  } else if(tool === 'dam'){
+    if(t.isSource || t.isBasin || t.isFilter){ playDenied(); return; }
+    if(t.isDam){ t.isDam=false; session.spent=Math.max(0,session.spent-COST.dam); playClick(); spawnCostPopup(t, COST.dam); computeGhostArrows(); updateTopbar(); return; }
+    if(!spend(COST.dam)) return;
+    t.isDam = true; t.water = 0; t.polluted = 0; playClick(); spawnCostPopup(t, -COST.dam);
+    triggerShake(6);
+  } else if(tool === 'filter'){
+    /* Zuiveringsinstallatie — plaatsen/verwijderen */
+    if(t.isSource || t.isBasin || t.isDam || t.type==='rock'){ playDenied(); return; }
+    if(t.isFilter){
+      t.isFilter = false; session.spent=Math.max(0,session.spent-COST.filter);
+      playClick(); spawnCostPopup(t, COST.filter);
+      computeGhostArrows(); updateTopbar(); return;
+    }
+    if(!spend(COST.filter)) return;
+    t.isFilter = true; playClick(); spawnCostPopup(t, -COST.filter);
+  } else if(tool === 'pipe'){
+    if(t.isDam){ playDenied(); return; }
+    const existing = findPipeAt(t.r, t.c);
+    if(existing && !pendingPipe){
+      currentLevel.pipes = currentLevel.pipes.filter(p=>p!==existing);
+      session.spent = Math.max(0, session.spent - existing.cost);
+      playClick(); spawnCostPopup(t, existing.cost);
+      computeGhostArrows(); updateTopbar(); return;
+    }
+    if(t.isSource || t.isBasin){ playDenied(); return; }
+    if(pendingPipe && pendingPipe.r===t.r && pendingPipe.c===t.c){ pendingPipe=null; return; }
+    if(!pendingPipe){ pendingPipe = {r:t.r,c:t.c}; playClick(); return; }
+    const dup = currentLevel.pipes.some(p=>
+      (p.a.r===pendingPipe.r&&p.a.c===pendingPipe.c&&p.b.r===t.r&&p.b.c===t.c) ||
+      (p.b.r===pendingPipe.r&&p.b.c===pendingPipe.c&&p.a.r===t.r&&p.a.c===t.c));
+    if(dup){ pendingPipe=null; playDenied(); return; }
+    const cost = pipeCostFor(pendingPipe, {r:t.r,c:t.c});
+    if(!spend(cost)){ pendingPipe=null; return; }
+    currentLevel.pipes.push({ a:{r:pendingPipe.r,c:pendingPipe.c}, b:{r:t.r,c:t.c}, cost });
+    spawnCostPopup(t, -cost);
+    pendingPipe = null; playClick();
+  }
+  computeGhostArrows();
+  updateTopbar();
+}
+
+/* =====================================================================
+   LEVEL LIFECYCLE
+===================================================================== */
+function loadLevel(id){
+  const def = LEVELS.find(l=>l.id===id);
+  if(!def) return;
+  currentLevel = JSON.parse(JSON.stringify(def));
+  currentLevel.pipes = [];
+  buildGridFromDef(currentLevel);
+  session = { spent:0, millEarned:0 };
+  sim = { running:false, totalEmitted:0, totalCaptured:0, totalLost:0,
+          totalPollCaptured:0, substeps:0, stableFrames:0 };
+  particles=[]; costPopups=[]; moneyParticles=[]; leakIntensity=new Map(); millEarnBuffer=0;
+  pendingPipe=null; millAngle=0; shakeAmt=0;
+  initWeather();
+  currentTool = 'excavate';
+  computeRenderOrder();
+  computeGhostArrows();
+  computeMillZone();
+  computeOrigin();
+  setToolActive('excavate');
+  setToolbarRunningState(false);
+  showScreen('game');
+  updateTopbar();
+}
+
+function restartLevel(){
+  if(currentLevel) loadLevel(currentLevel.id);
+}
+
+function resetWaterOnly(){
+  for(let r=0;r<currentLevel.rows;r++) for(let c=0;c<currentLevel.cols;c++){
+    grid[r][c].water = 0; grid[r][c].polluted = 0;
+  }
+  currentLevel.sources.forEach(s=>s.emitted = 0);
+  (currentLevel.pollutedSources||[]).forEach(s=>s.emitted = 0);
+  if(session.spentSnapshot != null) session.spent = session.spentSnapshot;
+  sim = { running:false, totalEmitted:0, totalCaptured:0, totalLost:0,
+          totalPollCaptured:0, substeps:0, stableFrames:0 };
+  particles=[]; costPopups=[]; moneyParticles=[]; leakIntensity=new Map(); millEarnBuffer=0;
+  initWeather();
+}
+
+function startSimulation(){
+  ensureAudio();
+  session.spentSnapshot = session.spent;
+  sim.running = true;
+  startWaterSound();
+  setToolbarRunningState(true);
+}
+function stopAndAdjust(){
+  sim.running = false;
+  stopWaterSound();
+  resetWaterOnly();
+  setToolbarRunningState(false);
+  updateTopbar();
+}
+
+function evaluateResults(){
+  sim.running = false;
+  stopWaterSound();
+  const effectiveCaptured = sim.totalCaptured - sim.totalPollCaptured * POLL_PENALTY;
+  const pct = sim.totalEmitted>0 ? (Math.max(0,effectiveCaptured)/sim.totalEmitted*100) : 0;
+  const budgetRemainPct = ((currentLevel.budget - session.spent)/currentLevel.budget)*100;
+  let stars = 0;
+  if(pct >= currentLevel.bronsPct) stars = 1;
+  if(pct >= currentLevel.silverPct) stars = 2;
+  if(stars>=1 && budgetRemainPct >= 30) stars = 3;
+  /* Meta-currency: resterend budget → Gouden Munten */
+  let coinsEarned = 0;
+  if(stars >= 1){
+    coinsEarned = Math.max(0, Math.floor(currentLevel.budget - session.spent));
+  }
+  saveProgress(currentLevel.id, stars, coinsEarned);
+  setToolbarRunningState(false);
+  showResultModal(pct, budgetRemainPct, stars, coinsEarned);
+  if(stars>=1) playFanfare(); else playFailSound();
+}
+
+/* =====================================================================
+   SCHERMEN / UI
+===================================================================== */
+function showScreen(name){
+  currentScreen = name;
+  document.getElementById('levelSelect').classList.toggle('hidden', name!=='select');
+  document.getElementById('topbar').classList.toggle('hidden', name!=='game');
+  document.getElementById('toolbar').style.display = name==='game' ? 'flex' : 'none';
+  document.getElementById('shopOverlay').classList.add('hidden');
+  if(name==='select') renderLevelSelect();
+}
+
+function renderLevelSelect(){
+  const wrap = document.getElementById('levelCards');
+  wrap.innerHTML = '';
+  document.getElementById('coinVal').textContent = saveData.coins || 0;
+  LEVELS.forEach(l=>{
+    const entry = saveData.levels[l.id] || {unlocked:false, stars:0};
+    const card = document.createElement('div');
+    card.className = 'levelCard' + (entry.unlocked ? '' : ' locked');
+    const hasPoll = l.pollutedSources && l.pollutedSources.length > 0;
+    const starsHtml = entry.unlocked
+      ? ('&#9733;'.repeat(entry.stars) + '&#9734;'.repeat(3-entry.stars))
+      : '&#128274;';
+    card.innerHTML =
+      '<div class="lvlNum">LEVEL ' + l.id + (hasPoll?' ☠':'') + '</div>' +
+      '<div class="lvlName">' + l.name + '</div>' +
+      '<div class="lvlStars">' + starsHtml + '</div>';
+    if(entry.unlocked){
+      addTapHandler(card, function(){ ensureAudio(); loadLevel(l.id); });
+    }
+    wrap.appendChild(card);
+  });
+}
+
+function updateTopbar(){
+  document.getElementById('levelName').textContent = currentLevel.name;
+  const remain = Math.max(0, Math.round(currentLevel.budget - session.spent));
+  document.getElementById('budgetVal').textContent = '\u20AC' + remain + '/\u20AC' + currentLevel.budget;
+  const effectiveCaptured = sim.totalCaptured - sim.totalPollCaptured*POLL_PENALTY;
+  const pct = sim.totalEmitted>0 ? (Math.max(0,effectiveCaptured)/sim.totalEmitted*100) : 0;
+  document.getElementById('pctVal').textContent = pct.toFixed(0) + '%';
+  const totalVol = currentLevel.sources.reduce((s,src)=>s+src.volumeLimit,0)
+                 + (currentLevel.pollutedSources||[]).reduce((s,src)=>s+src.volumeLimit,0);
+  const emittedVol = currentLevel.sources.reduce((s,src)=>s+(src.emitted||0),0)
+                   + (currentLevel.pollutedSources||[]).reduce((s,src)=>s+(src.emitted||0),0);
+  const remainingPct = totalVol>0 ? Math.max(0, 100 - (emittedVol/totalVol*100)) : 0;
+  document.getElementById('remainVal').textContent = remainingPct.toFixed(0) + '%';
+  const best = (saveData.levels[currentLevel.id] && saveData.levels[currentLevel.id].stars) || 0;
+  document.getElementById('starsVal').innerHTML = '&#9733;'.repeat(best) + '&#9734;'.repeat(3-best);
+}
+
+function setToolActive(tool){
+  currentTool = tool;
+  document.querySelectorAll('.toolBtn[data-tool]').forEach(b=>{
+    b.classList.toggle('active', b.getAttribute('data-tool')===tool);
+  });
+}
+
+function setToolbarRunningState(running){
+  document.querySelectorAll('.toolBtn[data-tool]').forEach(b=>{ b.disabled = running; });
+  document.getElementById('restartBtn').disabled = running;
+  document.getElementById('resetLevelBtn').disabled = running;
+  const btn = document.getElementById('startStopBtn');
+  btn.classList.toggle('running', running);
+  btn.innerHTML = running ? '&#9208; STOP &amp; AANPASSEN' : '&#9654; START SIMULATIE';
+}
+
+function showResultModal(pct, budgetPct, stars, coinsEarned){
+  document.getElementById('resultTitle').textContent = stars>=1 ? 'Level voltooid!' : 'Nog niet gelukt';
+  document.getElementById('resultStars').innerHTML = '&#9733;'.repeat(stars) + '&#9734;'.repeat(3-stars);
+  document.getElementById('resultPct').textContent = pct.toFixed(0) + '%';
+  document.getElementById('resultBudget').textContent = Math.max(0,budgetPct).toFixed(0) + '%';
+  document.getElementById('resultCoins').textContent = '+' + (coinsEarned||0);
+  document.getElementById('coinsEarnedRow').style.display = stars>=1 ? 'flex' : 'none';
+  const nextDef = LEVELS.find(l=>l.id === currentLevel.id+1);
+  document.getElementById('nextLevelBtn').style.display = (nextDef && stars>=1) ? 'block' : 'none';
+  document.getElementById('resultModal').classList.remove('hidden');
+}
+function hideResultModal(){ document.getElementById('resultModal').classList.add('hidden'); }
+
+/* =====================================================================
+   WINKEL (cosmetische paletten)
+===================================================================== */
+function showShop(){
+  document.getElementById('shopOverlay').classList.remove('hidden');
+  document.getElementById('levelSelect').classList.add('hidden');
+  renderShop();
+}
+function hideShop(){
+  document.getElementById('shopOverlay').classList.add('hidden');
+  document.getElementById('levelSelect').classList.remove('hidden');
+  renderLevelSelect();
+}
+function renderShop(){
+  document.getElementById('shopCoins').textContent = (saveData.coins||0) + ' Munten';
+  const wrap = document.getElementById('paletteCards');
+  wrap.innerHTML = '';
+  Object.keys(PALETTES).forEach(pid=>{
+    const p = PALETTES[pid];
+    const owned = (saveData.ownedPalettes||[]).indexOf(pid) >= 0;
+    const active = activePalette === pid;
+    const canBuy = !owned && (saveData.coins||0) >= p.cost;
+    const card = document.createElement('div');
+    card.className = 'paletteCard' + (owned?' owned':'') + (active?' activeP':'');
+    const preview =
+      '<span style="background:'+p.bgDeep+'"></span>' +
+      '<span style="background:'+p.cyan+'"></span>' +
+      '<span style="background:'+p.amber+'"></span>' +
+      '<span style="background:'+p.bgPanel+'"></span>';
+    let btnHtml = '';
+    if(!owned){
+      btnHtml = '<button class="paletteBtn buyBtn" '+(canBuy?'':'disabled')+'>Kopen ('+p.cost+' 🪙)</button>';
+    } else if(active){
+      btnHtml = '<button class="paletteBtn equippedBtn" disabled>Actief</button>';
+    } else {
+      btnHtml = '<button class="paletteBtn equipBtn">Activeren</button>';
+    }
+    card.innerHTML =
+      '<div class="paletteName">' + p.name + '</div>' +
+      '<div class="palettePreview">' + preview + '</div>' +
+      (owned?'<div class="paletteCost" style="color:var(--green)">Gekocht</div>':'<div class="paletteCost">'+p.cost+' Munten</div>') +
+      btnHtml;
+    const btn = card.querySelector('.paletteBtn');
+    if(!owned && canBuy){
+      addTapHandler(btn, function(){
+        saveData.coins -= p.cost;
+        saveData.ownedPalettes.push(pid);
+        persistSave();
+        applyPalette(pid);
+        renderShop();
+      });
+    } else if(owned && !active){
+      addTapHandler(btn, function(){
+        applyPalette(pid);
+        renderShop();
+      });
+    }
+    wrap.appendChild(card);
+  });
+}
+
+/* =====================================================================
+   TAP HELPER
+===================================================================== */
+function addTapHandler(el, handler){
+  let touched = false;
+  el.addEventListener('touchend', function(e){
+    e.preventDefault(); touched = true; handler(e);
+    setTimeout(function(){ touched=false; }, 450);
+  }, {passive:false});
+  el.addEventListener('click', function(e){ if(touched) return; handler(e); });
+}
+
+/* =====================================================================
+   TEKENEN — isometrisch canvas
+===================================================================== */
+function computeOrigin(){
+  const w = window.innerWidth, h = window.innerHeight;
+  if(!currentLevel){ originX = w/2; originY = h/2; gridScale=1; return; }
+  const cols = currentLevel.cols, rows = currentLevel.rows;
+  const corners = [
+    tileToScreenWorld(0,0,0), tileToScreenWorld(cols-1,0,0),
+    tileToScreenWorld(0,rows-1,0), tileToScreenWorld(cols-1,rows-1,0)
+  ];
+  const xs = corners.map(p=>p.x), ys = corners.map(p=>p.y);
+  const minX = Math.min.apply(null,xs) - TILE_W/2, maxX = Math.max.apply(null,xs) + TILE_W/2;
+  const minY = Math.min.apply(null,ys) - MAX_HEIGHT*HEIGHT_UNIT - TILE_H/2, maxY = Math.max.apply(null,ys) + TILE_H/2;
+  const gw = maxX-minX, gh = maxY-minY;
+  const topbarH = 66, toolbarH = 150;
+  const availH = Math.max(200, h - topbarH - toolbarH);
+  const scale = Math.min((w*0.92)/gw, (availH*0.92)/gh, 1.7);
+  gridScale = Math.max(0.35, scale);
+  originX = w/2 - (minX+maxX)/2*gridScale;
+  originY = topbarH + availH/2 - (minY+maxY)/2*gridScale;
+}
+
+function tileColor(t){
+  const pal = PALETTES[activePalette];
+  let hue,sat,light;
+  if(t.isDam){ hue=32; sat=32; light=36; }
+  else if(t.isFilter){ hue=280; sat=60; light=48; }
+  else if(t.isSource && t.isPollSource){ hue=290; sat=70; light=42; }
+  else if(t.isSource){ hue=192; sat=88; light=56; }
+  else if(t.isBasin){ hue=200; sat=58; light=30; }
+  else if(t.type==='rock'){ hue=210; sat=6; light=52; }
+  else {
+    const totalW = t.water + t.polluted;
+    const wet = Math.min(1, totalW*3);
+    hue = pal.sandHue - wet*8;
+    sat = 40 + wet*12;
+    light = (53 + t.height*4) - wet*20;
+  }
+  return {
+    top:   'hsl('+hue+','+sat+'%,'+light+'%)',
+    right: 'hsl('+hue+','+sat+'%,'+Math.max(10,light-16)+'%)',
+    left:  'hsl('+hue+','+sat+'%,'+Math.max(6,light-30)+'%)'
+  };
+}
+
+function computeTileGeom(t){
+  const pos = tileToScreenWorld(t.c, t.r, t.height);
+  const base = tileToScreenWorld(t.c, t.r, 0);
+  const hw = TILE_W/2, hh = TILE_H/2;
+  const N={x:pos.x,y:pos.y-hh}, E={x:pos.x+hw,y:pos.y}, S={x:pos.x,y:pos.y+hh}, W={x:pos.x-hw,y:pos.y};
+  const dropY = base.y - pos.y;
+  return { pos, base, hw, hh, N, E, S, W, dropY };
+}
+
+function pointInPoly(px,py, pts){
+  let inside=false;
+  for(let i=0, j=pts.length-1; i<pts.length; j=i++){
+    const xi=pts[i].x, yi=pts[i].y, xj=pts[j].x, yj=pts[j].y;
+    const intersect = ((yi>py)!==(yj>py)) && (px < (xj-xi)*(py-yi)/(yj-yi)+xi);
+    if(intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function drawTile(t){
+  const geom = computeTileGeom(t);
+  const {pos,hw,hh,N,E,S,W,dropY} = geom;
+  const colors = tileColor(t);
+
+  /* Zijvlakken */
+  if(dropY > 0.5){
+    ctx.beginPath();
+    ctx.moveTo(S.x,S.y); ctx.lineTo(W.x,W.y); ctx.lineTo(W.x,W.y+dropY); ctx.lineTo(S.x,S.y+dropY);
+    ctx.closePath(); ctx.fillStyle = colors.left; ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(S.x,S.y); ctx.lineTo(E.x,E.y); ctx.lineTo(E.x,E.y+dropY); ctx.lineTo(S.x,S.y+dropY);
+    ctx.closePath(); ctx.fillStyle = colors.right; ctx.fill();
+  }
+
+  /* Bovenvlak */
+  ctx.beginPath();
+  ctx.moveTo(N.x,N.y); ctx.lineTo(E.x,E.y); ctx.lineTo(S.x,S.y); ctx.lineTo(W.x,W.y);
+  ctx.closePath(); ctx.fillStyle = colors.top; ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.14)'; ctx.lineWidth = 1; ctx.stroke();
+
+  /* Isometrische schaduw: als buurman links/boven hoger is, verduister bovenvlak */
+  drawTileShadow(t, geom);
+
+  /* Natuur-decoraties (gras/kiezels) */
+  drawNatureDetails(t, pos);
+
+  if(t.isDam) drawDamDeco(pos,hw,hh);
+  if(t.isSource) drawSourceDeco(pos, t.isPollSource);
+  if(t.isBasin) drawBasinDeco(pos,hw,hh);
+  if(t.isFilter) drawFilterDeco(pos,hw,hh);
+
+  drawWaterLevel(t, pos, hw, hh);
+}
+
+/* Schaduw: tegel is lager dan zijn buurman → donkere overlay */
+function drawTileShadow(t, geom){
+  const northTile = getTile(t.r-1, t.c);
+  const westTile = getTile(t.r, t.c-1);
+  let maxDiff = 0;
+  if(northTile && !northTile.isDam && northTile.height > t.height)
+    maxDiff = Math.max(maxDiff, northTile.height - t.height);
+  if(westTile && !westTile.isDam && westTile.height > t.height)
+    maxDiff = Math.max(maxDiff, westTile.height - t.height);
+  if(maxDiff <= 0) return;
+  const alpha = Math.min(0.22, maxDiff * 0.08);
+  ctx.beginPath();
+  ctx.moveTo(geom.N.x, geom.N.y); ctx.lineTo(geom.E.x, geom.E.y);
+  ctx.lineTo(geom.S.x, geom.S.y); ctx.lineTo(geom.W.x, geom.W.y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(0,0,0,' + alpha + ')';
+  ctx.fill();
+}
+
+/* Natuur-details: grassprieten of kiezels */
+function drawNatureDetails(t, pos){
+  if(!t.deco || t.isDam || t.isFilter || t.isBasin || t.isSource) return;
+  const totalW = t.water + t.polluted;
+  if(totalW > 0.3) return; // onder water → niet tekenen
+  ctx.save();
+  if(t.deco.type === 'grass'){
+    ctx.strokeStyle = 'rgba(90,160,70,0.55)'; ctx.lineWidth = 1;
+    t.deco.blades.forEach(b=>{
+      ctx.beginPath();
+      ctx.moveTo(pos.x+b.ox, pos.y+b.oy);
+      ctx.lineTo(pos.x+b.ox+b.lean, pos.y+b.oy-b.h);
+      ctx.stroke();
+    });
+  } else if(t.deco.type === 'pebbles'){
+    t.deco.stones.forEach(s=>{
+      ctx.beginPath();
+      ctx.arc(pos.x+s.ox, pos.y+s.oy, s.rad, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(120,115,100,'+s.shade+')';
+      ctx.fill();
+    });
+  }
+  ctx.restore();
+}
+
+/* Waterniveau met vervuilings-kleurmenging */
+const WATER_VISUAL_MAX = HEIGHT_UNIT * 0.5;
+function drawWaterLevel(t, pos, hw, hh){
+  const totalW = t.water + t.polluted;
+  if(totalW <= 0.008 || t.isDam) return;
+  const depth = Math.min(1, totalW);
+  const wH = depth * WATER_VISUAL_MAX;
+  const topY = pos.y - wH;
+  const alpha = 0.38 + Math.min(0.4, totalW*0.4);
+  const N2={x:pos.x,y:topY-hh}, E2={x:pos.x+hw,y:topY}, S2={x:pos.x,y:topY+hh}, W2={x:pos.x-hw,y:topY};
+  const pal = PALETTES[activePalette];
+  const pollFrac = totalW > 0 ? t.polluted / totalW : 0;
+  /* Kleur interpoleren: schoon (blauw) → vervuild (paars) */
+  const wR = Math.round(pal.waterRGB[0]*(1-pollFrac) + pal.pollRGB[0]*pollFrac);
+  const wG = Math.round(pal.waterRGB[1]*(1-pollFrac) + pal.pollRGB[1]*pollFrac);
+  const wB = Math.round(pal.waterRGB[2]*(1-pollFrac) + pal.pollRGB[2]*pollFrac);
+
+  if(wH > 0.6){
+    ctx.beginPath();
+    ctx.moveTo(S2.x,S2.y); ctx.lineTo(W2.x,W2.y); ctx.lineTo(W2.x,W2.y+wH); ctx.lineTo(S2.x,S2.y+wH);
+    ctx.closePath(); ctx.fillStyle = 'rgba('+Math.max(0,wR-50)+','+Math.max(0,wG-60)+','+Math.max(0,wB-30)+','+(alpha*0.7)+')'; ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(S2.x,S2.y); ctx.lineTo(E2.x,E2.y); ctx.lineTo(E2.x,E2.y+wH); ctx.lineTo(S2.x,S2.y+wH);
+    ctx.closePath(); ctx.fillStyle = 'rgba('+Math.max(0,wR-30)+','+Math.max(0,wG-30)+','+Math.max(0,wB-15)+','+(alpha*0.82)+')'; ctx.fill();
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(N2.x,N2.y); ctx.lineTo(E2.x,E2.y); ctx.lineTo(S2.x,S2.y); ctx.lineTo(W2.x,W2.y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba('+wR+','+wG+','+wB+','+(alpha+0.14)+')';
+  ctx.fill();
+  /* Rand-highlight */
+  const edgeA = pollFrac > 0.4 ? 0.3 : 0.5;
+  ctx.strokeStyle = 'rgba('+(wR+60)+','+(wG+50)+','+(wB+10)+','+edgeA+')'; ctx.lineWidth = 1; ctx.stroke();
+}
+
+function drawDamDeco(pos,hw,hh){
+  ctx.save();
+  ctx.strokeStyle = 'rgba(30,18,8,0.5)'; ctx.lineWidth = 2;
+  for(let i=-1;i<=1;i++){
+    ctx.beginPath();
+    ctx.moveTo(pos.x-hw*0.5, pos.y+i*hh*0.28);
+    ctx.lineTo(pos.x+hw*0.5, pos.y+i*hh*0.28-6);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawSourceDeco(pos, isPoll){
+  const pulse = 0.5 + 0.5*Math.sin(performance.now()/280);
+  ctx.save();
+  const baseColor = isPoll ? 'rgba(180,60,220,' : 'rgba(150,240,255,';
+  const coreColor = isPoll ? '#f0c0ff' : '#eafcff';
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y-6, 9+pulse*2, 0, Math.PI*2);
+  ctx.fillStyle = baseColor+(0.55+pulse*0.25)+')';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y-6, 4, 0, Math.PI*2);
+  ctx.fillStyle = coreColor;
+  ctx.fill();
+  /* Skull-icoon voor vervuilde bron */
+  if(isPoll){
+    ctx.font = '700 8px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#3a0050';
+    ctx.fillText('☠', pos.x, pos.y-6);
+  }
+  ctx.restore();
+}
+
+function drawBasinDeco(pos,hw,hh){
+  const fill = basinFillRatio();
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y-hh*0.92);
+  ctx.lineTo(pos.x+hw*0.92, pos.y);
+  ctx.lineTo(pos.x, pos.y+hh*0.92);
+  ctx.lineTo(pos.x-hw*0.92, pos.y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(20,60,80,0.55)';
+  ctx.fill();
+  ctx.beginPath();
+  const fy = pos.y + hh*0.8 - fill*hh*1.5;
+  ctx.moveTo(pos.x, fy);
+  ctx.lineTo(pos.x+hw*0.7*(1-fill*0.2), fy+ hh*0.4);
+  ctx.lineTo(pos.x, pos.y+hh*0.86);
+  ctx.lineTo(pos.x-hw*0.7*(1-fill*0.2), fy+ hh*0.4);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(90,210,255,0.85)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(230,250,255,0.75)'; ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y-hh*0.92); ctx.lineTo(pos.x+hw*0.92, pos.y);
+  ctx.lineTo(pos.x, pos.y+hh*0.92); ctx.lineTo(pos.x-hw*0.92, pos.y); ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* Zuiveringsinstallatie-decoratie: een klein filter-symbool */
+function drawFilterDeco(pos,hw,hh){
+  ctx.save();
+  /* Basis: donkerpaars omlijnd vierkantje */
+  ctx.strokeStyle = 'rgba(180,100,255,0.8)'; ctx.lineWidth = 2;
+  ctx.fillStyle = 'rgba(100,40,160,0.35)';
+  const s = 10;
+  ctx.beginPath();
+  ctx.rect(pos.x-s, pos.y-s-4, s*2, s*2);
+  ctx.fill(); ctx.stroke();
+  /* Trechter/filter-strepen */
+  ctx.strokeStyle = 'rgba(220,180,255,0.7)'; ctx.lineWidth = 1.5;
+  for(let i=-1;i<=1;i++){
+    ctx.beginPath();
+    ctx.moveTo(pos.x-6, pos.y-4+i*4);
+    ctx.lineTo(pos.x+6, pos.y-4+i*4);
+    ctx.stroke();
+  }
+  /* Druppel eronder */
+  ctx.fillStyle = 'rgba(90,200,255,0.7)';
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y+8, 3, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawMill(){
+  if(!currentLevel.mill) return;
+  const mt = getTile(currentLevel.mill.r, currentLevel.mill.c);
+  if(!mt) return;
+  const pos = tileToScreenWorld(mt.c, mt.r, mt.height);
+  ctx.save();
+  ctx.translate(pos.x, pos.y-16);
+  ctx.strokeStyle = '#6b4a2b'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(0,10); ctx.lineTo(0,-8); ctx.stroke();
+  ctx.rotate(millAngle);
+  ctx.fillStyle = '#e8ddb5';
+  for(let i=0;i<4;i++){
+    ctx.save();
+    ctx.rotate(i*Math.PI/2);
+    ctx.fillRect(-2,-16,4,14);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function updateMill(dt){
+  if(!currentLevel.mill) return;
+  const mt = getTile(currentLevel.mill.r, currentLevel.mill.c);
+  if(!mt) return;
+  const totalW = mt.water + mt.polluted;
+  let nearWater = totalW > 0.02;
+  if(!nearWater){
+    const dirs=[[-1,0],[1,0],[0,-1],[0,1]];
+    for(const [dr,dc] of dirs){
+      const n = getTile(mt.r+dr, mt.c+dc);
+      if(n && (n.water+n.polluted) > 0.05){ nearWater = true; break; }
+    }
+  }
+  if(sim.running && nearWater) millAngle += dt*3.4;
+}
+
+function drawPipes(){
+  if(!currentLevel.pipes.length) return;
+  const dashOffset = (performance.now()/60) % 20;
+  currentLevel.pipes.forEach(p=>{
+    const ta = getTile(p.a.r,p.a.c), tb = getTile(p.b.r,p.b.c);
+    if(!ta||!tb) return;
+    const p1 = tileToScreenWorld(ta.c,ta.r,ta.height);
+    const p2 = tileToScreenWorld(tb.c,tb.r,tb.height);
+    const midX = (p1.x+p2.x)/2, midY = (p1.y+p2.y)/2 - 30;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(80,60,40,0.85)'; ctx.lineWidth = 7; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(p1.x,p1.y-6); ctx.quadraticCurveTo(midX,midY,p2.x,p2.y-6); ctx.stroke();
+    ctx.strokeStyle = 'rgba(180,150,110,0.9)'; ctx.lineWidth = 3;
+    ctx.setLineDash([6,6]); ctx.lineDashOffset = sim.running ? -dashOffset : 0;
+    ctx.beginPath(); ctx.moveTo(p1.x,p1.y-6); ctx.quadraticCurveTo(midX,midY,p2.x,p2.y-6); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  });
+}
+
+function drawGhostArrows(){
+  if(sim.running) return;
+  ctx.save();
+  ghostArrows.forEach(g=>{
+    const from = tileToScreenWorld(g.c, g.r, getTile(g.r,g.c).height);
+    const toW = tileToScreenWorld(g.c+g.dc, g.r+g.dr, 0);
+    const fromFlat = tileToScreenWorld(g.c, g.r, 0);
+    const angle = Math.atan2(toW.y-fromFlat.y, toW.x-fromFlat.x);
+    ctx.save();
+    ctx.translate(from.x, from.y-4);
+    ctx.rotate(angle);
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = '#bff2ff';
+    ctx.beginPath();
+    ctx.moveTo(9,0); ctx.lineTo(-5,-5); ctx.lineTo(-5,5); ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  });
+  ctx.restore();
+}
+
+function drawParticles(){
+  ctx.save();
+  const pal = PALETTES[activePalette];
+  particles.forEach(p=>{
+    const a = 1 - (p.life/p.maxLife);
+    const pf = p.poll || 0;
+    const r = Math.round(pal.waterRGB[0]*(1-pf) + pal.pollRGB[0]*pf);
+    const g = Math.round(pal.waterRGB[1]*(1-pf) + pal.pollRGB[1]*pf);
+    const b = Math.round(pal.waterRGB[2]*(1-pf) + pal.pollRGB[2]*pf);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 1.6, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba('+r+','+g+','+b+','+(a*0.85)+')';
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+function drawPendingPipeMarker(){
+  if(!pendingPipe) return;
+  const t = getTile(pendingPipe.r, pendingPipe.c);
+  if(!t) return;
+  const pos = tileToScreenWorld(t.c,t.r,t.height);
+  const pulse = 0.6+0.4*Math.sin(performance.now()/150);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(244,185,66,'+pulse+')';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, 16, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function voidScreenOffset(t){
+  let dx=0, dy=0, count=0;
+  const base = tileToScreenWorld(t.c, t.r, 0);
+  if(t.r===0){ const p=tileToScreenWorld(t.c, t.r-1, 0); dx+=p.x-base.x; dy+=p.y-base.y; count++; }
+  if(t.r===currentLevel.rows-1){ const p=tileToScreenWorld(t.c, t.r+1, 0); dx+=p.x-base.x; dy+=p.y-base.y; count++; }
+  if(t.c===0){ const p=tileToScreenWorld(t.c-1, t.r, 0); dx+=p.x-base.x; dy+=p.y-base.y; count++; }
+  if(t.c===currentLevel.cols-1){ const p=tileToScreenWorld(t.c+1, t.r, 0); dx+=p.x-base.x; dy+=p.y-base.y; count++; }
+  if(count===0) return {x:0,y:-1};
+  const len = Math.hypot(dx,dy)||1;
+  return {x:dx/len, y:dy/len};
+}
+
+function drawLeakWarnings(){
+  if(!currentLevel || leakIntensity.size===0) return;
+  ctx.save();
+  leakIntensity.forEach((intensity,key)=>{
+    if(intensity < 0.012) return;
+    const parts = key.split('_');
+    const t = getTile(Number(parts[0]), Number(parts[1]));
+    if(!t) return;
+    const pos = tileToScreenWorld(t.c, t.r, t.height);
+    const dir = voidScreenOffset(t);
+    const ex = pos.x + dir.x*24, ey = pos.y + dir.y*20 - 8;
+    const pulse = 0.6+0.4*Math.sin(performance.now()/170 + t.r*3+t.c*7);
+    const alpha = Math.min(1, intensity*7) * pulse;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(ex, ey, 10, 0, Math.PI*2);
+    ctx.fillStyle = '#e8342a';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = '800 13px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('!', ex, ey+1);
+  });
+  ctx.restore();
+}
+
+/* Regendruppels op het canvas (visueel effect) */
+let rainDrops = [];
+function updateRainDrops(dt){
+  if(weather.type==='rain' && sim.running){
+    /* Spawn nieuwe druppels */
+    for(let i=0;i<2;i++){
+      if(Math.random()<0.6){
+        rainDrops.push({
+          x: (Math.random()-0.5)*currentLevel.cols*TILE_W,
+          y: -currentLevel.rows*TILE_H - Math.random()*40,
+          vy: 160+Math.random()*80, life:0, maxLife:0.6+Math.random()*0.3
+        });
+      }
+    }
+  }
+  for(let i=rainDrops.length-1;i>=0;i--){
+    const d = rainDrops[i];
+    d.life += dt; d.y += d.vy*dt;
+    if(d.life >= d.maxLife) rainDrops.splice(i,1);
+  }
+  if(rainDrops.length > 80) rainDrops.splice(0, rainDrops.length-80);
+}
+function drawRainDrops(){
+  if(rainDrops.length===0) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(150,200,240,0.35)'; ctx.lineWidth = 1;
+  rainDrops.forEach(d=>{
+    const a = 1-(d.life/d.maxLife);
+    ctx.globalAlpha = a*0.5;
+    ctx.beginPath();
+    ctx.moveTo(d.x, d.y);
+    ctx.lineTo(d.x-1, d.y+6);
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+function drawBackground(w,h){
+  const pal = PALETTES[activePalette];
+  const grad = ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0, pal.bgDeep);
+  const darker = pal.bgDeep; // achtergrond-gradient: bovenaan het palet, onderaan iets donkerder
+  grad.addColorStop(1, darker);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,w,h);
+  ctx.save();
+  ctx.strokeStyle = pal.gridLine; ctx.lineWidth = 1;
+  const step = 40;
+  for(let x=0;x<w;x+=step){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+  for(let y=0;y<h;y+=step){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawFrame(){
+  const w = window.innerWidth, h = window.innerHeight;
+  drawBackground(w,h);
+  if(!currentLevel) return;
+  ctx.save();
+
+  /* Screen-shake toepassen */
+  let sx=0, sy=0;
+  if(shakeAmt > 0.3){
+    sx = (Math.random()-0.5)*shakeAmt;
+    sy = (Math.random()-0.5)*shakeAmt;
+    shakeAmt *= 0.85; // snel uitdoven
+    if(shakeAmt < 0.3) shakeAmt = 0;
+  }
+
+  ctx.translate(originX + sx, originY + sy);
+  ctx.scale(gridScale, gridScale);
+
+  renderOrder.forEach(({r,c})=> drawTile(grid[r][c]));
+  drawPipes();
+  drawMill();
+  drawGhostArrows();
+  drawRainDrops();
+  drawParticles();
+  drawMoneyParticles();
+  drawCostPopups();
+  drawLeakWarnings();
+  drawPendingPipeMarker();
+
+  ctx.restore();
+}
+
+/* =====================================================================
+   INPUT — canvas (touch + muis)
+===================================================================== */
+function pickTile(clientX, clientY){
+  if(!currentLevel) return null;
+  const rect = canvas.getBoundingClientRect();
+  const x = (clientX - rect.left - originX)/gridScale;
+  const y = (clientY - rect.top - originY)/gridScale;
+  for(let i=renderOrder.length-1;i>=0;i--){
+    const {r,c} = renderOrder[i];
+    const t = grid[r][c];
+    const geom = computeTileGeom(t);
+    if(pointInPoly(x,y,[geom.N,geom.E,geom.S,geom.W])) return t;
+    if(geom.dropY > 0.5){
+      const left = [geom.S, geom.W, {x:geom.W.x,y:geom.W.y+geom.dropY}, {x:geom.S.x,y:geom.S.y+geom.dropY}];
+      const right = [geom.S, geom.E, {x:geom.E.x,y:geom.E.y+geom.dropY}, {x:geom.S.x,y:geom.S.y+geom.dropY}];
+      if(pointInPoly(x,y,left) || pointInPoly(x,y,right)) return t;
+    }
+  }
+  return null;
+}
+
+function pointerDown(clientX, clientY){
+  if(currentScreen!=='game' || sim.running) return;
+  isPointerDown = true;
+  paintedThisStroke = new Set();
+  const t = pickTile(clientX, clientY);
+  if(t){
+    applyTool(t, currentTool);
+    if(currentTool==='excavate' || currentTool==='raise') paintedThisStroke.add(t.r+'_'+t.c);
+    lastTouchedTile = t;
+  }
+}
+function pointerMove(clientX, clientY){
+  if(!isPointerDown || sim.running) return;
+  if(currentTool!=='excavate' && currentTool!=='raise') return;
+  const t = pickTile(clientX, clientY);
+  if(t){
+    const k = t.r+'_'+t.c;
+    if(!paintedThisStroke.has(k)){
+      applyTool(t, currentTool);
+      paintedThisStroke.add(k);
+    }
+    lastTouchedTile = t;
+  }
+}
+function pointerUp(){
+  isPointerDown = false;
+  paintedThisStroke = null;
+}
+
+canvas.addEventListener('touchstart', function(e){
+  e.preventDefault();
+  const tch = e.changedTouches[0];
+  pointerDown(tch.clientX, tch.clientY);
+}, {passive:false});
+canvas.addEventListener('touchmove', function(e){
+  e.preventDefault();
+  const tch = e.changedTouches[0];
+  pointerMove(tch.clientX, tch.clientY);
+}, {passive:false});
+canvas.addEventListener('touchend', function(e){
+  e.preventDefault();
+  pointerUp();
+}, {passive:false});
+
+canvas.addEventListener('mousedown', function(e){ pointerDown(e.clientX, e.clientY); });
+canvas.addEventListener('mousemove', function(e){ pointerMove(e.clientX, e.clientY); });
+window.addEventListener('mouseup', function(){ pointerUp(); });
+
+/* =====================================================================
+   INPUT — UI knoppen
+===================================================================== */
+document.querySelectorAll('.toolBtn[data-tool]').forEach(btn=>{
+  addTapHandler(btn, function(){
+    if(sim.running) return;
+    ensureAudio();
+    const tool = btn.getAttribute('data-tool');
+    if(tool!=='pipe') pendingPipe = null;
+    setToolActive(tool);
+  });
+});
+
+document.querySelectorAll('.speedBtn').forEach(btn=>{
+  addTapHandler(btn, function(){
+    ensureAudio();
+    speedMultiplier = Number(btn.getAttribute('data-speed'));
+    document.querySelectorAll('.speedBtn').forEach(b=>b.classList.toggle('active', b===btn));
+  });
+});
+
+addTapHandler(document.getElementById('startStopBtn'), function(){
+  ensureAudio();
+  if(!sim.running) startSimulation(); else stopAndAdjust();
+});
+
+addTapHandler(document.getElementById('homeBtn'), function(){
+  if(sim.running) stopAndAdjust();
+  showScreen('select');
+});
+addTapHandler(document.getElementById('restartBtn'), function(){
+  if(sim.running) return;
+  if(window.confirm('Level opnieuw beginnen? Al je terreinaanpassingen en uitgegeven budget gaan verloren.')) restartLevel();
+});
+addTapHandler(document.getElementById('resetLevelBtn'), function(){
+  if(sim.running) return;
+  if(window.confirm('Level opnieuw beginnen? Al je terreinaanpassingen en uitgegeven budget gaan verloren.')) restartLevel();
+});
+
+addTapHandler(document.getElementById('nextLevelBtn'), function(){
+  hideResultModal();
+  const nextDef = LEVELS.find(l=>l.id === currentLevel.id+1);
+  if(nextDef) loadLevel(nextDef.id);
+});
+addTapHandler(document.getElementById('retryBtn'), function(){
+  hideResultModal();
+  restartLevel();
+});
+addTapHandler(document.getElementById('toSelectBtn'), function(){
+  hideResultModal();
+  showScreen('select');
+});
+addTapHandler(document.getElementById('shopBtn'), function(){
+  ensureAudio();
+  showShop();
+});
+addTapHandler(document.getElementById('shopBackBtn'), function(){
+  hideShop();
+});
+
+/* =====================================================================
+   RESIZE
+===================================================================== */
+function resizeCanvas(){
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = window.innerWidth, h = window.innerHeight;
+  canvas.width = Math.round(w*dpr);
+  canvas.height = Math.round(h*dpr);
+  canvas.style.width = w+'px';
+  canvas.style.height = h+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  computeOrigin();
+}
+window.addEventListener('resize', resizeCanvas);
+window.addEventListener('orientationchange', function(){ setTimeout(resizeCanvas,250); });
+
+/* =====================================================================
+   GAME LOOP
+===================================================================== */
+let lastTime = performance.now();
+function gameLoop(now){
+  const dt = Math.min(0.05, (now-lastTime)/1000);
+  lastTime = now;
+
+  if(currentScreen === 'game' && currentLevel){
+    if(sim.running){
+      let totalMove = 0;
+      for(let i=0;i<speedMultiplier;i++){
+        totalMove += stepPhysics(PHYSICS_DT);
+      }
+      updateWaterSound(totalMove*3);
+      updateMill(dt*speedMultiplier);
+      updateTopbar();
+      if(checkSimCompletion()) evaluateResults();
+    }
+    updateParticles(dt);
+    updateCostPopups(dt);
+    updateMoneyParticles(dt);
+    updateRainDrops(dt);
+    drawFrame();
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+/* =====================================================================
+   INIT
+===================================================================== */
+function init(){
+  resizeCanvas();
+  showScreen('select');
+  requestAnimationFrame(gameLoop);
+}
+init();
+
+})();
+</script>
+</body>
+</html>
